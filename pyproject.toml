@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "envy"
+version = "0.1.0"
+description = "A lightweight CLI dotfiles manager for backup, restore, sync, and machine-specific templates."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Anchorage" }]
+license = { text = "MIT" }
+keywords = ["dotfiles", "cli", "backup", "bootstrap", "git"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: System :: Archiving :: Backup",
+  "Topic :: Utilities",
+]
+
+[project.scripts]
+envy = "envy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

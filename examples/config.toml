@@ -1,0 +1,8 @@
+files = [
+  ".zshrc",
+  ".gitconfig",
+  ".config/starship.toml",
+]
+
+[machine]
+git_email = "you@example.com"
