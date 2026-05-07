@@ -68,3 +68,17 @@ envy bootstrap --force
 ```
 
 If `scripts/bootstrap` exists, `envy bootstrap` restores files and then executes it.
+
+## Development
+
+Run the unit tests locally without installing the package:
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+Run a compile check on the CLI module:
+
+```bash
+python3 -m py_compile src/envy/cli.py
+```
