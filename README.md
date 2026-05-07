@@ -29,6 +29,30 @@ python3 -m pip install -e .
 envy restore --force
 ```
 
+### Backup on overwrite
+
+When `--force` is used, any file or directory that already exists at the target
+location is **automatically backed up** before being overwritten. Backups are
+written to:
+
+```
+.envy/backups/<timestamp>/<relative-path-from-home>
+```
+
+All files overwritten in a single `envy restore --force` run share the same
+`<timestamp>` directory (format: `YYYYMMDDTHHmmSS`), making it easy to roll
+back an entire restore in one step.
+
+Example output:
+
+```
+backed up /home/user/.zshrc -> /home/user/.dotfiles/.envy/backups/20240101T120000/.zshrc
+restored /home/user/.zshrc
+```
+
+No backup is created when `--dry-run` is specified, or when the target file
+does not yet exist.
+
 ## Templates
 
 Place templates under `templates/` using the same relative path as the home file. For example:
