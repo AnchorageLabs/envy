@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import difflib
 import os
 import platform
@@ -215,7 +216,39 @@ def load_settings(args: argparse.Namespace) -> Settings:
     return Settings(repo=repo, home=home, config_path=config_path, files=files, machine=machine)
 
 
+def backup_existing(target_path: Path, home_dir: Path, repo_root: Path, timestamp: str) -> Path:
+    """Copy an existing target file or directory into the timestamped backup directory.
+
+    The backup destination mirrors the relative path of *target_path* under *home_dir*
+    so that the original layout is preserved and rollback is straightforward.
+
+    Note: copying a large directory tree (e.g. .config/) may be slow; this is
+    acceptable for a dotfiles manager but worth being aware of.
+    """
+    try:
+        relative = target_path.resolve().relative_to(home_dir.resolve())
+    except ValueError as exc:
+        raise EnvyError(f"{target_path} is outside {home_dir}") from exc
+
+    backup_dest = repo_root / ".envy" / "backups" / timestamp / relative
+    backup_dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if target_path.is_dir():
+        # copytree requires the destination to not exist
+        if backup_dest.exists():
+            shutil.rmtree(backup_dest)
+        shutil.copytree(target_path, backup_dest)
+    else:
+        shutil.copy2(target_path, backup_dest)
+
+    return backup_dest
+
+
 def restore(settings: Settings, *, dry_run: bool, force: bool) -> None:
+    # Generate a single timestamp for the entire restore run so that all
+    # backups from this invocation share the same directory.
+    timestamp = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
+
     for name in settings.files:
         target = resolve_home_path(settings.home, name)
         source = template_path(settings.repo, name)
@@ -235,6 +268,11 @@ def restore(settings: Settings, *, dry_run: bool, force: bool) -> None:
         if dry_run:
             print(f"would restore {source} -> {target}")
             continue
+
+        # Back up the existing target before overwriting when --force is active.
+        if target.exists() and force:
+            backup_dest = backup_existing(target, settings.home, settings.repo, timestamp)
+            print(f"backed up {target} -> {backup_dest}")
 
         target.parent.mkdir(parents=True, exist_ok=True)
         if rendered is not None:
