@@ -267,6 +267,23 @@ def restore(settings: Settings, *, dry_run: bool, force: bool) -> None:
 
         if dry_run:
             print(f"would restore {source} -> {target}")
+            # Compute and display a unified diff when the target is a regular file
+            # (or does not yet exist) and we have text content to compare.
+            would_write: str | None
+            if rendered is not None:
+                would_write = rendered
+            elif source.is_file():
+                would_write = source.read_text(encoding="utf-8")
+            else:
+                # Source is a directory — no text diff to show.
+                would_write = None
+
+            if would_write is not None:
+                if target.exists() and target.is_file():
+                    current = target.read_text(encoding="utf-8")
+                    if current != would_write:
+                        print_diff(target, current, would_write)
+                # If target does not exist the "would restore" message above is sufficient.
             continue
 
         # Back up the existing target before overwriting when --force is active.
