@@ -210,6 +210,11 @@ def load_settings(args: argparse.Namespace) -> Settings:
     files = data.get("files", [])
     if not isinstance(files, list) or not all(isinstance(item, str) for item in files):
         raise EnvyError("config key `files` must be a list of strings")
+    seen: set[str] = set()
+    for path in files:
+        if path in seen:
+            raise EnvyError(f"Duplicate entry in config files: {path}")
+        seen.add(path)
     machine = data.get("machine", {})
     if not isinstance(machine, dict):
         raise EnvyError("config key `machine` must be a table")
