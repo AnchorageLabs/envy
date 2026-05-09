@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -183,6 +185,139 @@ class RestoreBackupTest(unittest.TestCase):
             ts_dir = timestamp_dirs[0]
             self.assertTrue((ts_dir / ".zshrc").exists())
             self.assertTrue((ts_dir / ".bashrc").exists())
+
+
+class RestoreDryRunDiffTest(unittest.TestCase):
+    """Tests for unified diff output in `envy restore --dry-run`."""
+
+    def _setup_stored(self, repo: Path, home: Path, stored_content: str) -> None:
+        """Initialise a minimal envy repo with .zshrc tracked via home/ (not templates/)."""
+        cmd_init(Args(repo=repo, home=home))
+        (repo / "home" / ".zshrc").write_text(stored_content, encoding="utf-8")
+        (repo / ".envy" / "config.toml").write_text(
+            'files = [".zshrc"]\n', encoding="utf-8"
+        )
+
+    def test_dry_run_stored_file_target_exists_and_differs_shows_diff(self) -> None:
+        """dry-run on a stored file where target exists and differs: diff lines appear in output and file is not modified."""
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as home_dir:
+            repo = Path(repo_dir)
+            home = Path(home_dir)
+            stored_content = "# stored version\nexport PATH=/usr/local/bin:$PATH\n"
+            self._setup_stored(repo, home, stored_content)
+
+            current_content = "# current version\nexport PATH=/usr/bin:$PATH\n"
+            (home / ".zshrc").write_text(current_content, encoding="utf-8")
+
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                cmd_restore(Args(repo=repo, home=home, dry_run=True, force=False))
+            finally:
+                sys.stdout = old_stdout
+
+            output = captured.getvalue()
+
+            # File must not be modified
+            self.assertEqual(
+                (home / ".zshrc").read_text(encoding="utf-8"),
+                current_content,
+                "dry-run must not modify the target file",
+            )
+
+            # Diff markers must appear in output
+            self.assertIn("---", output, "expected '---' in diff output")
+            self.assertIn("+++", output, "expected '+++' in diff output")
+            self.assertIn("@@", output, "expected '@@' in diff output")
+            # Removed line from current
+            self.assertTrue(
+                any(line.startswith("-") and "current" in line for line in output.splitlines()),
+                "expected a removed line containing 'current' in diff output",
+            )
+            # Added line from stored
+            self.assertTrue(
+                any(line.startswith("+") and "stored" in line for line in output.splitlines()),
+                "expected an added line containing 'stored' in diff output",
+            )
+
+    def test_dry_run_stored_file_target_does_not_exist_no_crash(self) -> None:
+        """dry-run on a stored file where target does not exist: no crash and 'would restore' message."""
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as home_dir:
+            repo = Path(repo_dir)
+            home = Path(home_dir)
+            self._setup_stored(repo, home, "# stored\n")
+
+            # Ensure target does NOT exist
+            target = home / ".zshrc"
+            self.assertFalse(target.exists())
+
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                result = cmd_restore(Args(repo=repo, home=home, dry_run=True, force=False))
+            finally:
+                sys.stdout = old_stdout
+
+            output = captured.getvalue()
+
+            # Must exit cleanly
+            self.assertEqual(result, 0, "cmd_restore should return 0")
+
+            # Target must still not exist
+            self.assertFalse(target.exists(), "dry-run must not create the target file")
+
+            # Output must mention the restore that would happen
+            self.assertIn("would restore", output, "expected 'would restore' in output")
+
+    def test_dry_run_template_file_target_exists_and_differs_shows_rendered_diff(self) -> None:
+        """dry-run on a template-rendered file where target exists and differs: rendered diff appears in output."""
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as home_dir:
+            repo = Path(repo_dir)
+            home = Path(home_dir)
+
+            cmd_init(Args(repo=repo, home=home))
+            (repo / ".envy" / "config.toml").write_text(
+                'files = [".zshrc"]\n[machine]\nwork_email = "dev@example.com"\n',
+                encoding="utf-8",
+            )
+
+            # Template uses a machine variable
+            template_content = "# generated\nemail={{ machine.work_email }}\nos={{ os }}\n"
+            (repo / "templates" / ".zshrc").write_text(template_content, encoding="utf-8")
+
+            # Current on-disk content is different
+            current_content = "# old content\nemail=old@example.com\n"
+            (home / ".zshrc").write_text(current_content, encoding="utf-8")
+
+            captured = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                cmd_restore(Args(repo=repo, home=home, dry_run=True, force=False))
+            finally:
+                sys.stdout = old_stdout
+
+            output = captured.getvalue()
+
+            # File must not be modified
+            self.assertEqual(
+                (home / ".zshrc").read_text(encoding="utf-8"),
+                current_content,
+                "dry-run must not modify the target file",
+            )
+
+            # Diff markers must appear
+            self.assertIn("---", output, "expected '---' in diff output")
+            self.assertIn("+++", output, "expected '+++' in diff output")
+            self.assertIn("@@", output, "expected '@@' in diff output")
+
+            # The rendered email value should appear as an added line
+            self.assertIn("dev@example.com", output, "rendered template value should appear in diff")
+
+            # The old email should appear as a removed line
+            self.assertIn("old@example.com", output, "old content should appear as removed in diff")
 
 
 if __name__ == "__main__":
