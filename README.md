@@ -80,6 +80,9 @@ files = [".gitconfig"]
 work_email = "you@company.com"
 ```
 
+> **Note:** Each entry in the `files` list must be unique. Duplicate paths are
+> rejected immediately with an error when the config is loaded.
+
 ## Commands
 
 ```bash
