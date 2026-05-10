@@ -96,6 +96,19 @@ envy bootstrap --force
 
 If `scripts/bootstrap` exists, `envy bootstrap` restores files and then executes it.
 
+### Bootstrap dry-run
+
+`envy bootstrap --dry-run` shows what would happen without making any changes
+or executing any scripts. The output depends on the state of `scripts/bootstrap`:
+
+| Condition | Output |
+|---|---|
+| `scripts/bootstrap` not found | `[dry-run] scripts/bootstrap not found; nothing to run` |
+| Script exists, **not** executable | `[dry-run] <path> exists but is not executable` |
+| Script exists and is executable | `[dry-run] would run <path> (executable)` |
+
+No subprocess is ever invoked during a dry-run.
+
 ## Development
 
 Run the unit tests locally without installing the package:

@@ -193,10 +193,17 @@ def cmd_bootstrap(args: argparse.Namespace) -> int:
     settings = load_settings(args)
     restore(settings, dry_run=args.dry_run, force=args.force)
     script = settings.repo / "scripts" / "bootstrap"
-    if script.exists() and not args.dry_run:
-        run([str(script)], cwd=settings.repo)
-    elif script.exists():
-        print(f"would run {script}")
+    if args.dry_run:
+        if script.exists():
+            if os.access(script, os.X_OK):
+                print(f"[dry-run] would run {script} (executable)")
+            else:
+                print(f"[dry-run] {script} exists but is not executable")
+        else:
+            print("[dry-run] scripts/bootstrap not found; nothing to run")
+    else:
+        if script.exists():
+            run([str(script)], cwd=settings.repo)
     return 0
 
 
