@@ -1,0 +1,6 @@
+{
+  "doppler": {
+    "project": "my-app",
+    "config": "prd"
+  }
+}
