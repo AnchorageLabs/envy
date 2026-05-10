@@ -13,6 +13,7 @@ import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from . import __version__
 
 
 DEFAULT_CONFIG = """# Envy tracks dotfiles from your home directory.
@@ -55,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="envy",
         description="Backup, restore, sync, and bootstrap dotfiles across machines.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"envy {__version__}"
     )
     parser.add_argument(
         "--repo",
