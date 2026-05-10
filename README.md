@@ -92,6 +92,8 @@ envy restore --force
 envy status
 envy sync --pull --push -m "sync dotfiles"
 envy bootstrap --force
+envy hook <shell>
+envy install-hooks
 ```
 
 If `scripts/bootstrap` exists, `envy bootstrap` restores files and then executes it.
@@ -108,6 +110,36 @@ or executing any scripts. The output depends on the state of `scripts/bootstrap`
 | Script exists and is executable | `[dry-run] would run <path> (executable)` |
 
 No subprocess is ever invoked during a dry-run.
+
+## Automatic .env Synchronization
+
+### Shell Hooks
+
+You can automatically run `envy status` (and optionally `envy restore`) when entering a directory containing an `.envy/` folder by adding a shell hook to your shell profile.
+
+Generate the hook code for your shell:
+
+```bash
+envy hook zsh   # for zsh
+envy hook bash  # for bash
+envy hook fish  # for fish
+```
+
+Add the output to your `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish` as appropriate.
+
+### Git Hooks
+
+To automatically run `envy restore` after git operations (such as `git pull` or branch switch), install git hooks:
+
+```bash
+envy install-hooks
+```
+
+This installs `post-merge` and `post-checkout` hooks in `.git/hooks/` that run `envy restore` if an `.envy/` directory is present. The installation is idempotent and safe to run multiple times.
+
+### Checking Hook Installation
+
+The CLI may warn you if hooks are not installed, to help ensure your `.env` files are always up-to-date.
 
 ## Development
 
