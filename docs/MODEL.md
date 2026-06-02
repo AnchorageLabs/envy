@@ -29,7 +29,8 @@ An authenticated account that can own projects and propose or approve changes.
 
 **Relationships**
 
-- `User` 1—* `Project` (a user owns many projects; `Project.owner_id` → `User.id`).
+- `User` 1—* `Project` (a user owns many projects; `Project.owner_user_id` → `User.id`).
+- `User` 1—* `Variable` (a user may own many variables; `Variable.owner_user_id` → `User.id`).
 - `User` 1—* `ChangeProposal` (a user authors many proposals; `ChangeProposal.author_id` → `User.id`).
 - `User` 1—* `AuditLog` (a user is the actor on many audit entries; `AuditLog.actor_id` → `User.id`).
 
@@ -40,18 +41,17 @@ An authenticated account that can own projects and propose or approve changes.
 A top-level container that groups related environments (e.g. one repository or
 one product).
 
-| Field        | Type        | Description                                          |
-|--------------|-------------|------------------------------------------------------|
-| `id`         | `uuid`      | Primary key.                                         |
-| `owner_id`   | `uuid`      | FK → `User.id`. The user who owns the project.       |
-| `name`       | `text`      | Project name (unique within an owner).               |
-| `slug`       | `text`      | URL/CLI-friendly identifier.                         |
-| `created_at` | `timestamp` | When the project was created.                        |
-| `updated_at` | `timestamp` | When the project was last modified.                  |
+| Field           | Type        | Description                                               |
+|-----------------|-------------|-----------------------------------------------------------|
+| `id`            | `uuid`      | Primary key.                                              |
+| `slug`          | `text`      | Globally unique URL/CLI-friendly identifier matching `^[a-z0-9-]+$`. |
+| `name`          | `text`      | Project name.                                             |
+| `owner_user_id` | `uuid`      | FK → `User.id`. The user who owns the project.            |
+| `created_at`    | `timestamp` | When the project was created.                             |
 
 **Relationships**
 
-- `Project` *—1 `User` (owner; `owner_id` → `User.id`).
+- `Project` *—1 `User` (owner; `owner_user_id` → `User.id`).
 - `Project` 1—* `Environment` (a project has many environments; `Environment.project_id` → `Project.id`).
 
 ---
@@ -67,16 +67,15 @@ published version.
 | `id`                | `uuid`      | Primary key.                                                       |
 | `project_id`        | `uuid`      | FK → `Project.id`. Owning project.                                 |
 | `name`              | `text`      | Environment name (unique within a project), e.g. `production`.     |
-| `stable_version_id` | `uuid`      | Nullable FK → `EnvironmentVersion.id`. Currently published version. |
+| `stable_version_id` | `uuid`      | Nullable identifier for the currently published version.           |
 | `created_at`        | `timestamp` | When the environment was created.                                  |
-| `updated_at`        | `timestamp` | When the environment was last modified.                            |
 
 **Relationships**
 
-- `Environment` *—1 `Project` (`project_id` → `Project.id`).
+- `Environment` *—1 `Project` (`project_id` → `Project.id`, cascading delete from project to environments).
 - `Environment` 1—* `Variable` (the mutable working draft; `Variable.environment_id` → `Environment.id`).
 - `Environment` 1—* `EnvironmentVersion` (immutable snapshots; `EnvironmentVersion.environment_id` → `Environment.id`).
-- `Environment` *—1 `EnvironmentVersion` via the nullable `stable_version_id` FK (the currently stable published version).
+- `Environment` may point at an `EnvironmentVersion` via the nullable `stable_version_id` value once version records exist.
 
 ---
 
@@ -91,17 +90,20 @@ environment. Variables are edited freely; they are snapshotted into an
 | `id`             | `uuid`      | Primary key.                                                       |
 | `environment_id` | `uuid`      | FK → `Environment.id`. Owning environment.                         |
 | `key`            | `text`      | Variable name (unique within an environment), e.g. `DATABASE_URL`. |
-| `value`          | `text`      | The variable value (may be encrypted at rest for secrets).         |
-| `type`           | `text`      | Logical type of the value (e.g. `string`, `number`, `boolean`).    |
-| `is_secret`      | `boolean`   | Whether the value is sensitive and must be masked.                 |
-| `is_required`    | `boolean`   | Whether the variable must be present for the environment to be valid. |
-| `description`    | `text`      | Optional one-line description of the variable.                     |
+| `type`           | `text`      | Logical type of the value: `string`, `enum`, `boolean`, or `number`. |
+| `required`       | `boolean`   | Whether the variable must be present for the environment to be valid. Defaults to `false`. |
+| `secret`         | `boolean`   | Whether the value is sensitive and must be masked. Defaults to `false`. |
+| `default_value`  | `text`      | Optional default value for the variable.                           |
+| `description`    | `text`      | One-line description of the variable. Defaults to an empty string. |
+| `owner_user_id`  | `uuid`      | Nullable FK → `User.id`. Optional variable owner.                  |
+| `deprecated`     | `boolean`   | Whether the variable is deprecated. Defaults to `false`.           |
 | `created_at`     | `timestamp` | When the variable was created.                                     |
 | `updated_at`     | `timestamp` | When the variable was last modified.                               |
 
 **Relationships**
 
-- `Variable` *—1 `Environment` (`environment_id` → `Environment.id`).
+- `Variable` *—1 `Environment` (`environment_id` → `Environment.id`, cascading delete from environment to variables).
+- `Variable` *—1 `User` optionally (`owner_user_id` → `User.id`).
 
 ---
 
@@ -183,7 +185,7 @@ publishes, proposal approvals, etc.).
                           |       User       |
                           +------------------+
                             | 1     | 1   | 1
-            owner_id        |       |     | author_id      actor_id
+       owner_user_id        |       |     | author_id      actor_id
             +---------------+       |     +-----------------------------+
             |                      | created_by                        |
             v 1                    |                                   v *
@@ -217,6 +219,7 @@ Legend: `1` and `*` denote the cardinality endpoints; `1—*` means "one to many
 Cardinality summary:
 
 - `User` 1—* `Project`
+- `User` 1—* `Variable`
 - `User` 1—* `ChangeProposal`
 - `User` 1—* `EnvironmentVersion` (as publisher)
 - `User` 1—* `AuditLog`
