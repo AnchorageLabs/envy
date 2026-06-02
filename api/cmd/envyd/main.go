@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AnchorageLabs/envy/api/internal/db"
 	"github.com/AnchorageLabs/envy/api/internal/server"
 )
 
@@ -30,9 +31,21 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	pool, err := db.Open(ctx, cfg.databaseURL)
+	if err != nil {
+		logger.Error("database connection failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := db.Migrate(ctx, pool); err != nil {
+		logger.Error("database migration failed", "error", err)
+		os.Exit(1)
+	}
+
 	httpServer := &http.Server{
 		Addr:    cfg.addr,
-		Handler: server.NewRouter(),
+		Handler: server.NewRouter(pool),
 	}
 
 	serverErr := make(chan error, 1)
@@ -81,7 +94,7 @@ func loadConfig() config {
 
 	return config{
 		addr:        addr,
-		databaseURL: os.Getenv("ENVY_DB_URL"),
+		databaseURL: strings.TrimSpace(os.Getenv("ENVY_DB_URL")),
 		logLevel:    parseLogLevel(os.Getenv("ENVY_LOG_LEVEL")),
 	}
 }
