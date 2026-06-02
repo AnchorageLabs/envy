@@ -32,6 +32,14 @@ func NewRouter(pool *pgxpool.Pool) http.Handler {
 		r.Post("/login", s.loginHandler)
 		r.With(middleware.Auth(s.pool)).Post("/logout", s.logoutHandler)
 	})
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Auth(s.pool))
+		r.Post("/projects", s.createProjectHandler)
+		r.Get("/projects", s.listProjectsHandler)
+		r.Get("/projects/{slug}", s.getProjectHandler)
+		r.Patch("/projects/{slug}", s.updateProjectHandler)
+		r.Delete("/projects/{slug}", s.deleteProjectHandler)
+	})
 	return r
 }
 
