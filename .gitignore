@@ -1,0 +1,28 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.test
+*.out
+/bin/
+/dist/
+
+# Vendor directory
+vendor/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment files
+# NOTE: .envy/schema.json and .envy/lock.json are intentionally NOT ignored
+# because they are project configuration that should be committed.
+# Only the exact filenames below are excluded — no wildcard that would
+# accidentally match .envy/ directory contents.
+.env
+.env.local
+.env.*.local
