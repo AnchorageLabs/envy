@@ -68,6 +68,22 @@ func (s *ProjectStore) ListProjectsByOwner(ctx context.Context, ownerID string) 
 	return projects, nil
 }
 
+func (s *ProjectStore) GetProjectBySlug(ctx context.Context, slug string) (*Project, error) {
+	project := &Project{}
+	err := s.pool.QueryRow(ctx, `
+		select id::text, owner_id::text, slug, name
+		from projects
+		where slug = $1
+	`, slug).Scan(&project.ID, &project.OwnerID, &project.Slug, &project.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return project, nil
+}
+
 func (s *ProjectStore) GetProjectBySlugForOwner(ctx context.Context, ownerID, slug string) (*Project, error) {
 	project := &Project{}
 	err := s.pool.QueryRow(ctx, `
