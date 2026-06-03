@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -16,6 +17,10 @@ var schemaOwnerIDRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-f
 
 type createEnvironmentRequest struct {
 	Name string `json:"name"`
+}
+
+type publishEnvironmentVersionRequest struct {
+	SetStable *bool `json:"set_stable"`
 }
 
 type schemaVariableRequest struct {
@@ -34,6 +39,7 @@ func (s *Server) registerEnvironmentRoutes(r chi.Router) {
 	r.Route("/projects/{slug}/environments", func(r chi.Router) {
 		r.Post("/", s.createEnvironmentHandler)
 		r.Get("/", s.listEnvironmentsHandler)
+		r.Post("/{name}/versions", s.publishEnvironmentVersionHandler)
 		r.Get("/{name}/schema", s.getEnvironmentSchemaHandler)
 		r.Put("/{name}/schema", s.replaceEnvironmentSchemaHandler)
 		r.Get("/{name}", s.getEnvironmentHandler)
@@ -110,6 +116,47 @@ func (s *Server) getEnvironmentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, environment)
+}
+
+func (s *Server) publishEnvironmentVersionHandler(w http.ResponseWriter, r *http.Request) {
+	project, environment, ok := s.projectAndEnvironmentForSchemaRequest(w, r)
+	if !ok {
+		return
+	}
+
+	actorID, ok := s.requireAuthenticatedUserID(w, r)
+	if !ok {
+		return
+	}
+
+	setStable := true
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	var req publishEnvironmentVersionRequest
+	if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.SetStable != nil {
+		setStable = *req.SetStable
+	}
+
+	version, err := repo.NewEnvironmentVersionStore(s.pool).PublishDraftVersion(r.Context(), project.ID, environment.ID, actorID, setStable)
+	if errors.Is(err, repo.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "environment not found")
+		return
+	}
+	if errors.Is(err, repo.ErrConflict) {
+		writeError(w, http.StatusConflict, "environment version already exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to publish environment version")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, version)
 }
 
 func (s *Server) getEnvironmentSchemaHandler(w http.ResponseWriter, r *http.Request) {
