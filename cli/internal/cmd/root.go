@@ -20,7 +20,17 @@ type rootOptions struct {
 
 // Execute runs the ENVY root command.
 func Execute() error {
-	return NewRootCommand().Execute()
+	err := NewRootCommand().Execute()
+	if err == nil {
+		return nil
+	}
+
+	var exitErr interface{ ExitCode() int }
+	if errors.As(err, &exitErr) {
+		os.Exit(exitErr.ExitCode())
+	}
+
+	return err
 }
 
 // NewRootCommand constructs the ENVY root command.
@@ -44,6 +54,10 @@ func NewRootCommand() *cobra.Command {
 				return nil
 			}
 
+			if cmd.Name() == "init" {
+				return nil
+			}
+
 			resolved, err := resolveAPIURL(cmd, opts)
 			if err != nil {
 				return err
@@ -57,11 +71,13 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().StringVar(&opts.apiURL, "api-url", "", "ENVY API base URL")
 	rootCmd.Flags().BoolVar(&opts.showVersion, "version", false, "print version and exit")
 
+	rootCmd.AddCommand(newInitCommand(opts))
+
 	return rootCmd
 }
 
 func resolveAPIURL(cmd *cobra.Command, opts *rootOptions) (string, error) {
-	if flag := cmd.Flags().Lookup("api-url"); flag != nil && flag.Changed {
+	if flag := cmd.Flag("api-url"); flag != nil && flag.Changed {
 		return opts.apiURL, nil
 	}
 
