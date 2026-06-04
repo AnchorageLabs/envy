@@ -1,14 +1,23 @@
 # ENVY — minimal build/run targets.
 #
 # This iteration intentionally ships no CI/unit tests. These targets cover the
-# build + local run loop and a throwaway Postgres for the API.
+# build + local run loop and a containerized Postgres for the API.
 SHELL := /bin/bash
 
-# A fresh 32-byte AES-256 master key (base64). Override to keep secrets stable
-# across restarts: make run-api MASTER_KEY=...
+# A fresh 32-byte AES-256 master key (base64), used only when ENV_FILE does not
+# already define ENVY_MASTER_KEY_B64. Override: make run-api MASTER_KEY=...
 MASTER_KEY  ?= $(shell head -c 32 /dev/urandom | base64)
-ENVY_DB_URL ?= postgres://envy:envy@localhost:5432/envy?sslmode=disable
+
+# Host port for the ENVY Postgres. Defaults to 5433 to avoid colliding with a
+# Postgres already on 5432 (e.g. the orchestrator's). Override: make db PG_PORT=5432
+PG_PORT     ?= 5433
+ENVY_DB_URL ?= postgres://envy:envy@localhost:$(PG_PORT)/envy?sslmode=disable
 ENVY_ADDR   ?= :8080
+
+# Env file run-api loads ENVY_DB_URL / ENVY_MASTER_KEY_B64 from. Defaults to a
+# repo-local .env; point it elsewhere to reuse another project's, e.g.:
+#   make run-api ENV_FILE=../anchorage-orchestrator/.env
+ENV_FILE    ?= .env
 
 .PHONY: help tidy build cli api vet db db-stop run-api clean
 help:
@@ -30,16 +39,20 @@ vet: ## go vet both modules
 	cd cli && go vet ./...
 	cd api && go vet ./...
 
-db: ## start a throwaway Postgres (needs Docker; sudo in this environment)
-	docker run --rm -d --name envy-pg \
-	  -e POSTGRES_USER=envy -e POSTGRES_PASSWORD=envy -e POSTGRES_DB=envy \
-	  -p 5432:5432 postgres:16
+db: ## build + run the ENVY Postgres on $(PG_PORT) (docker/postgres/Dockerfile)
+	docker build -t envy-postgres docker/postgres
+	docker run --rm -d --name envy-pg -p $(PG_PORT):5432 envy-postgres
 
-db-stop: ## stop the throwaway Postgres
+db-stop: ## stop the ENVY Postgres
 	docker stop envy-pg
 
-run-api: api ## migrate + serve the API on $(ENVY_ADDR)
-	ENVY_MASTER_KEY_B64='$(MASTER_KEY)' ENVY_DB_URL='$(ENVY_DB_URL)' ENVY_ADDR='$(ENVY_ADDR)' ./bin/envyd
+run-api: api ## migrate + serve, loading ENVY_* from $(ENV_FILE)
+	@test -f '$(ENV_FILE)' || { echo "env file not found: $(ENV_FILE) (override with ENV_FILE=...)"; exit 1; }
+	set -a; . '$(ENV_FILE)'; set +a; \
+	  ENVY_MASTER_KEY_B64="$${ENVY_MASTER_KEY_B64:-$(MASTER_KEY)}" \
+	  ENVY_DB_URL="$${ENVY_DB_URL:-$(ENVY_DB_URL)}" \
+	  ENVY_ADDR="$${ENVY_ADDR:-$(ENVY_ADDR)}" \
+	  ./bin/envyd
 
 clean: ## remove build output
 	rm -rf bin
