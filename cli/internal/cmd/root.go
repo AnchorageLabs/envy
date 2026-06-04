@@ -15,6 +15,7 @@ var Version = "dev"
 type rootOptions struct {
 	apiURL         string
 	resolvedAPIURL string
+	apiToken       string
 	showVersion    bool
 }
 
@@ -64,6 +65,15 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			opts.resolvedAPIURL = resolved
+			opts.apiToken = ""
+			if resolved != "" {
+				token, err := loadCredential(resolved)
+				if err != nil && !errors.Is(err, errCredentialsNotFound) {
+					return err
+				}
+				opts.apiToken = token
+			}
+
 			return nil
 		},
 	}
@@ -72,6 +82,7 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.Flags().BoolVar(&opts.showVersion, "version", false, "print version and exit")
 
 	rootCmd.AddCommand(newInitCommand(opts))
+	rootCmd.AddCommand(newLoginCommand(opts))
 
 	return rootCmd
 }
