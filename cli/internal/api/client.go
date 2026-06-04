@@ -451,3 +451,19 @@ func (c *Client) GetEnvironmentVersionValues(projectSlug string, environmentName
 	}
 	return flat, nil
 }
+
+// RollbackEnvironment re-points an environment's stable version to a previously
+// published version.
+//
+// NOTE: not yet wired end to end. The repo layer already implements the
+// operation (api/internal/repo/environment_versions.go:RollbackEnvironmentToVersion),
+// but no HTTP route exposes it and this client lacks the project-slug context the
+// rest of the API takes. Returning a clear error keeps `envy rollback` honest
+// (and the CLI buildable) until the server endpoint and project plumbing land.
+func (c *Client) RollbackEnvironment(environmentName string, version int) error {
+	return fmt.Errorf(
+		"rollback is not yet available: the API rollback endpoint is not wired up "+
+			"(repo store exists, HTTP route and project context missing) — %s@%d",
+		environmentName, version,
+	)
+}
