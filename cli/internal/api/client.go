@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -140,4 +141,81 @@ func (c *Client) GetEnvironmentSchema(projectSlug string, environmentName string
 	}
 
 	return json.RawMessage(body), nil
+}
+
+// versionValuesResponse is the response shape for the version values endpoint.
+//
+// NOTE: The endpoint may return either a flat map of key->value or an object
+// with a `values` field. We support both to be resilient to the actual API
+// shape; confirm against api/ handlers.
+type versionValuesResponse struct {
+	Values map[string]string `json:"values"`
+}
+
+// GetEnvironmentVersionValues fetches the values for a specific published
+// version of an environment.
+func (c *Client) GetEnvironmentVersionValues(projectSlug string, environmentName string, version int) (map[string]string, error) {
+	if strings.TrimSpace(c.BaseURL) == "" {
+		return nil, fmt.Errorf("api url is required")
+	}
+	if strings.TrimSpace(projectSlug) == "" {
+		return nil, fmt.Errorf("project slug is required")
+	}
+	if strings.TrimSpace(environmentName) == "" {
+		return nil, fmt.Errorf("environment name is required")
+	}
+
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid api url: %w", err)
+	}
+	baseURL.Path = strings.TrimRight(baseURL.Path, "/") +
+		"/projects/" + url.PathEscape(projectSlug) +
+		"/environments/" + url.PathEscape(environmentName) +
+		"/versions/" + url.PathEscape(strconv.Itoa(version)) +
+		"/values"
+
+	req, err := http.NewRequest(http.MethodGet, baseURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = resp.Status
+		}
+		return nil, fmt.Errorf("api request failed: %s", message)
+	}
+
+	// Try the wrapped `{ "values": {...} }` shape first.
+	var wrapped versionValuesResponse
+	if err := json.Unmarshal(body, &wrapped); err == nil && wrapped.Values != nil {
+		return wrapped.Values, nil
+	}
+
+	// Fall back to a flat key->value map.
+	var flat map[string]string
+	if err := json.Unmarshal(body, &flat); err != nil {
+		return nil, fmt.Errorf("failed to parse version values response: %w", err)
+	}
+	if flat == nil {
+		flat = map[string]string{}
+	}
+	return flat, nil
 }
