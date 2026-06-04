@@ -238,6 +238,143 @@ func (c *Client) CreateProposal(projectSlug string, environmentName string, mess
 	return &proposal, nil
 }
 
+// ApproveProposalResult is the response shape for approving a proposal.
+//
+// NOTE: Field names are based on the plan's stated assumptions: the approve
+// endpoint resolves a pending proposal, publishes a new stable version, and
+// returns the affected environment name plus the new version number. We try
+// several common field names to be resilient to the actual API shape; confirm
+// against api/ proposal handlers.
+type ApproveProposalResult struct {
+	Environment string `json:"environment"`
+	Env         string `json:"env"`
+	EnvName     string `json:"env_name"`
+
+	Version          int `json:"version"`
+	PublishedVersion int `json:"published_version"`
+	StableVersion    int `json:"stable_version"`
+}
+
+// EnvironmentName returns the affected environment name, tolerating multiple
+// possible response field names.
+func (r *ApproveProposalResult) EnvironmentName() string {
+	if strings.TrimSpace(r.Environment) != "" {
+		return r.Environment
+	}
+	if strings.TrimSpace(r.Env) != "" {
+		return r.Env
+	}
+	return strings.TrimSpace(r.EnvName)
+}
+
+// PublishedVersionNumber returns the newly published version number,
+// tolerating multiple possible response field names.
+func (r *ApproveProposalResult) PublishedVersionNumber() int {
+	if r.PublishedVersion != 0 {
+		return r.PublishedVersion
+	}
+	if r.Version != 0 {
+		return r.Version
+	}
+	return r.StableVersion
+}
+
+// ApproveProposal approves a pending proposal by ID. On success the API
+// publishes a new stable version and returns the affected environment and the
+// published version number.
+//
+// Errors from the API (e.g. attempting to approve an already-resolved or
+// non-pending proposal) are surfaced with the server-provided message so
+// callers can present a clear, user-facing error.
+func (c *Client) ApproveProposal(proposalID string) (*ApproveProposalResult, error) {
+	if strings.TrimSpace(c.BaseURL) == "" {
+		return nil, fmt.Errorf("api url is required")
+	}
+	if strings.TrimSpace(proposalID) == "" {
+		return nil, fmt.Errorf("proposal id is required")
+	}
+
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid api url: %w", err)
+	}
+	baseURL.Path = strings.TrimRight(baseURL.Path, "/") +
+		"/proposals/" + url.PathEscape(strings.TrimSpace(proposalID)) +
+		"/approve"
+
+	req, err := http.NewRequest(http.MethodPost, baseURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		message := decodeAPIErrorMessage(body)
+		if message == "" {
+			message = resp.Status
+		}
+
+		switch resp.StatusCode {
+		case http.StatusConflict, http.StatusUnprocessableEntity, http.StatusBadRequest:
+			// Typically returned when the proposal is not pending / already
+			// resolved. Surface a clear, user-facing message.
+			return nil, fmt.Errorf("cannot approve proposal: %s", message)
+		case http.StatusNotFound:
+			return nil, fmt.Errorf("proposal not found: %s", message)
+		default:
+			return nil, fmt.Errorf("api request failed: %s", message)
+		}
+	}
+
+	var result ApproveProposalResult
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse approve response: %w", err)
+		}
+	}
+
+	return &result, nil
+}
+
+// decodeAPIErrorMessage extracts a human-readable error message from a JSON
+// error body, falling back to the raw body text. Supports common shapes like
+// `{"error": "..."}` and `{"message": "..."}`.
+func decodeAPIErrorMessage(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+
+	var payload struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &payload); err == nil {
+		if strings.TrimSpace(payload.Error) != "" {
+			return strings.TrimSpace(payload.Error)
+		}
+		if strings.TrimSpace(payload.Message) != "" {
+			return strings.TrimSpace(payload.Message)
+		}
+	}
+
+	return trimmed
+}
+
 // versionValuesResponse is the response shape for the version values endpoint.
 //
 // NOTE: The endpoint may return either a flat map of key->value or an object
