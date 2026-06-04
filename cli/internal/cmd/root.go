@@ -91,6 +91,7 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newRollbackCommand(opts))
 	rootCmd.AddCommand(newExportCommand(opts))
 	rootCmd.AddCommand(newRunCommand(opts))
+	rootCmd.AddCommand(newVerifyCommand(opts))
 
 	return rootCmd
 }
