@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -141,6 +142,100 @@ func (c *Client) GetEnvironmentSchema(projectSlug string, environmentName string
 	}
 
 	return json.RawMessage(body), nil
+}
+
+// ProposalChange is a single change operation in a proposal payload.
+//
+// NOTE: Field names (op/key/type/required/secret/value) are based on the
+// plan's stated `changes` ops contract. Confirm against api/ proposal
+// handlers. Pointer fields are omitted when nil so updates only send
+// changed fields.
+type ProposalChange struct {
+	Op       string  `json:"op"`
+	Key      string  `json:"key"`
+	Type     string  `json:"type,omitempty"`
+	Required *bool   `json:"required,omitempty"`
+	Secret   *bool   `json:"secret,omitempty"`
+	Value    *string `json:"value,omitempty"`
+}
+
+// proposalRequest is the request body for POST /proposals.
+type proposalRequest struct {
+	Message string           `json:"message"`
+	Changes []ProposalChange `json:"changes"`
+}
+
+// Proposal is the response shape for a created proposal.
+type Proposal struct {
+	ID int `json:"id"`
+}
+
+// CreateProposal submits a proposal containing the given changes for the
+// bound project/environment.
+func (c *Client) CreateProposal(projectSlug string, environmentName string, message string, changes []ProposalChange) (*Proposal, error) {
+	if strings.TrimSpace(c.BaseURL) == "" {
+		return nil, fmt.Errorf("api url is required")
+	}
+	if strings.TrimSpace(projectSlug) == "" {
+		return nil, fmt.Errorf("project slug is required")
+	}
+	if strings.TrimSpace(environmentName) == "" {
+		return nil, fmt.Errorf("environment name is required")
+	}
+	if strings.TrimSpace(message) == "" {
+		return nil, fmt.Errorf("proposal message is required")
+	}
+
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid api url: %w", err)
+	}
+	baseURL.Path = strings.TrimRight(baseURL.Path, "/") +
+		"/projects/" + url.PathEscape(projectSlug) +
+		"/environments/" + url.PathEscape(environmentName) +
+		"/proposals"
+
+	reqBody := proposalRequest{Message: message, Changes: changes}
+	encoded, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode proposal request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, baseURL.String(), bytes.NewReader(encoded))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = resp.Status
+		}
+		return nil, fmt.Errorf("api request failed: %s", message)
+	}
+
+	var proposal Proposal
+	if err := json.Unmarshal(body, &proposal); err != nil {
+		return nil, fmt.Errorf("failed to parse proposal response: %w", err)
+	}
+
+	return &proposal, nil
 }
 
 // versionValuesResponse is the response shape for the version values endpoint.
