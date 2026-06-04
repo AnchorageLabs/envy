@@ -35,11 +35,9 @@ func (e *diffExitError) ExitCode() int {
 	return e.code
 }
 
-type schemaEntry struct {
-	Type     string
-	Required bool
-	Secret   bool
-}
+// schemaEntry is defined once in pull.go (it carries Key + JSON tags and is the
+// shape consumed across diff/pull/propose). diff.go builds entries field by
+// field, so the extra Key field is simply left empty here.
 
 func newDiffCommand(opts *rootOptions) *cobra.Command {
 	cmd := &cobra.Command{
