@@ -55,7 +55,7 @@ func NewRootCommand() *cobra.Command {
 				return nil
 			}
 
-			if cmd.Name() == "init" {
+			if cmd.Name() == "init" || cmd.Name() == "add" {
 				return nil
 			}
 
@@ -83,6 +83,7 @@ func NewRootCommand() *cobra.Command {
 
 	rootCmd.AddCommand(newInitCommand(opts))
 	rootCmd.AddCommand(newLoginCommand(opts))
+	rootCmd.AddCommand(newAddCommand(opts))
 
 	return rootCmd
 }
