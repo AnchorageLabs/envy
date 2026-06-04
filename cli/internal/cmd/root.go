@@ -86,6 +86,7 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(newAddCommand(opts))
 	rootCmd.AddCommand(newDiffCommand(opts))
 	rootCmd.AddCommand(newPullCommand(opts))
+	rootCmd.AddCommand(newExportCommand(opts))
 
 	return rootCmd
 }
